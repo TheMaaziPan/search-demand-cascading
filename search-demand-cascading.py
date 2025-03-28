@@ -1,103 +1,138 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
 from datetime import datetime, timedelta
 
-# --------------------------
-# 1. Generate Mock Trend Data
-# --------------------------
+# Check for required packages
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+except ImportError:
+    st.error("Critical packages missing! Please install with:\n\n"
+             "`pip install plotly streamlit pandas numpy`")
+    st.stop()
+
+# Configure page
+st.set_page_config(
+    page_title="Animated Trend Analyzer",
+    page_icon="📊",
+    layout="wide"
+)
+
+# Title and description
+st.title("🚀 Animated Search Demand Visualizer")
+st.markdown("""
+Explore how search demand trends cascade across different time frames with this interactive animation.
+""")
+
+# Generate realistic mock data
+@st.cache_data
 def generate_mock_data():
     np.random.seed(42)
-    date_range = pd.date_range(start="2023-01-01", end="2023-12-31", freq="D")
+    date_range = pd.date_range(start="2023-01-01", end="2023-03-31", freq="D")
     
-    # Simulate trend cascading with different frequencies
-    base_trend = np.sin(np.linspace(0, 2*np.pi, len(date_range))) * 50 + 50
+    # Base trend with seasonality
+    x = np.linspace(0, 4*np.pi, len(date_range))
+    base_trend = (np.sin(x) * 30 + 50) * (1 + 0.2 * np.sin(x/4))
     
     data = {
         "date": date_range,
-        "hourly": base_trend + np.random.normal(0, 15, len(date_range)),  # High volatility
-        "daily": base_trend + np.random.normal(0, 10, len(date_range)),
-        "weekly": base_trend + np.random.normal(0, 5, len(date_range)),
-        "monthly": base_trend  # Smoothest trend
+        "hourly": base_trend * (0.8 + 0.4*np.random.random(len(date_range))),
+        "daily": base_trend * (0.9 + 0.2*np.random.random(len(date_range))),
+        "weekly": base_trend,
+        "monthly": np.convolve(base_trend, np.ones(30)/30, mode='same')
     }
     
     df = pd.DataFrame(data)
     
-    # Clip negative values and normalize
+    # Normalize to 0-100 scale
     for col in data.keys():
         if col != "date":
-            df[col] = df[col].clip(lower=0)
             df[col] = (df[col] - df[col].min()) / (df[col].max() - df[col].min()) * 100
             
     return df
 
-# --------------------------
-# 2. Streamlit UI Configuration
-# --------------------------
-st.set_page_config(layout="wide", page_title="Animated Trend Visualizer")
-
-# Title
-st.title("📊 Animated Bar Chart: Search Demand Over Time")
-st.markdown("Watch how trends evolve across different time frames")
-
-# --------------------------
-# 3. Data Processing
-# --------------------------
+# Load data
 df = generate_mock_data()
 
-# Melt data for Plotly animation
+# Sidebar controls
+with st.sidebar:
+    st.header("Controls")
+    time_frames = st.multiselect(
+        "Select time frames:",
+        ["hourly", "daily", "weekly", "monthly"],
+        default=["daily", "weekly", "monthly"]
+    )
+    
+    animation_speed = st.slider(
+        "Animation speed:",
+        min_value=50,
+        max_value=500,
+        value=200,
+        help="Milliseconds between frames"
+    )
+    
+    show_raw = st.checkbox("Show raw data", False)
+
+# Prepare data for animation
 df_melted = df.melt(
     id_vars=["date"], 
-    value_vars=["hourly", "daily", "weekly", "monthly"],
+    value_vars=time_frames,
     var_name="time_frame", 
     value_name="demand"
 )
 
-# --------------------------
-# 4. Animated Bar Chart
-# --------------------------
-fig = px.bar(
-    df_melted,
-    x="time_frame",
-    y="demand",
-    color="time_frame",
-    animation_frame=df_melted["date"].astype(str),  # Convert dates to strings
-    range_y=[0, 100],
-    title="Animated Demand by Time Frame (Daily Progression)",
-    labels={"demand": "Normalized Demand (0-100)", "time_frame": "Time Frame"},
-    template="plotly_white"
-)
-
-# Speed up animation (milliseconds between frames)
-fig.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = 100
-fig.layout.updatemenus[0].buttons[0].args[1]["transition"]["duration"] = 50
-
-# Display the plot
-st.plotly_chart(fig, use_container_width=True)
-
-# --------------------------
-# 5. Line Chart for Comparison
-# --------------------------
-st.subheader("Trend Lines (Static View)")
-time_frames = st.multiselect(
-    "Select time frames to compare:",
-    ["hourly", "daily", "weekly", "monthly"],
-    default=["daily", "weekly", "monthly"]
-)
-
+# Create animated bar chart
 if time_frames:
-    fig_line = px.line(
+    fig = px.bar(
+        df_melted,
+        x="time_frame",
+        y="demand",
+        color="time_frame",
+        animation_frame="date",
+        range_y=[0, 100],
+        title="<b>Daily Demand by Time Frame</b>",
+        labels={"demand": "Normalized Demand (0-100)", "time_frame": "Time Frame"},
+        template="plotly_white",
+        color_discrete_sequence=px.colors.qualitative.Plotly
+    )
+    
+    # Customize animation
+    fig.update_layout(
+        hovermode="x unified",
+        showlegend=False,
+        title_x=0.5,
+        font=dict(size=12)
+    )
+    
+    fig.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = animation_speed
+    fig.layout.updatemenus[0].buttons[0].args[1]["transition"]["duration"] = animation_speed//2
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Add trend line chart
+    st.markdown("---")
+    st.subheader("Trend Lines Over Time")
+    fig_lines = px.line(
         df,
         x="date",
         y=time_frames,
-        title="Trend Lines Over Time",
-        template="plotly_white"
+        template="plotly_white",
+        color_discrete_sequence=px.colors.qualitative.Plotly
     )
-    st.plotly_chart(fig_line, use_container_width=True)
+    fig_lines.update_layout(hovermode="x unified")
+    st.plotly_chart(fig_lines, use_container_width=True)
+else:
+    st.warning("Please select at least one time frame from the sidebar")
 
-# --------------------------
-# 6. Data Explorer
-# --------------------------
-with st.expander("📁 View Raw Data"):
-    st.dataframe(df.sort_values("date", ascending=False))
+# Show raw data if requested
+if show_raw:
+    st.markdown("---")
+    st.subheader("Raw Data")
+    st.dataframe(df.sort_values("date", ascending=False), height=300)
+
+# Footer
+st.markdown("---")
+st.caption("""
+Created with Streamlit | Data is simulated for demonstration purposes
+""")
