@@ -112,13 +112,14 @@ if not plot_df.empty:
         color_discrete_sequence=px.colors.qualitative.Pastel
     )
     
-    # Fixed update_layout with properly closed parentheses
+    # PROPERLY CLOSED PARENTHESES HERE:
     fig.update_layout(
         hovermode="x unified",
         showlegend=False,
         title_x=0.3,
         font=dict(size=12),
         margin=dict(t=100)
+    )
     
     fig.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = animation_speed
     fig.layout.updatemenus[0].buttons[0].args[1]["transition"]["duration"] = animation_speed // 2
