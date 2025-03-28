@@ -112,7 +112,7 @@ if not plot_df.empty:
         color_discrete_sequence=px.colors.qualitative.Pastel
     )
     
-    # Fixed indentation here
+    # Fixed update_layout with properly closed parentheses
     fig.update_layout(
         hovermode="x unified",
         showlegend=False,
