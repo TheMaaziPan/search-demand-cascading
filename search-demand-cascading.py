@@ -6,121 +6,136 @@ from io import StringIO
 
 # Configure page
 st.set_page_config(
-    page_title="Meeting Places Over Time",
-    page_icon="💑",
+    page_title="Keyword Demand Visualizer",
+    page_icon="📊",
     layout="wide"
 )
 
 # Title and description
-st.title("💑 How Couples Met Over Time")
-st.markdown("Animated visualization of how meeting places changed across decades")
+st.title("📊 Search Demand Over Time")
+st.markdown("Upload your keyword data to see animated demand trends")
 
-# Create sample data based on your table
+# File upload section
+uploaded_file = st.sidebar.file_uploader(
+    "Upload CSV file",
+    type=["csv"],
+    help="Should contain columns: 'keyword', 'date', and 'search_volume'"
+)
+
+# Sample data generator
 @st.cache_data
-def generate_data():
-    categories = [
-        "School", "Friends", "Neighbours", "Church",
-        "Bar/Restaurant", "College", "Coworkers", "Online"
-    ]
+def generate_sample_data():
+    keywords = ["ChatGPT", "Bard", "Claude", "LLaMA"]
+    date_range = pd.date_range(start="2023-01-01", periods=12, freq="MS")  # Monthly
     
-    # Base percentages (2024 data from your table)
-    final_values = [22.32, 21.49, 19.66, 9.53, 8.54, 4.03, 3.59, 0.00]
-    
-    # Generate decade data from 1930 to 2020
-    decades = range(1930, 2030, 10)
     data = []
-    
-    for decade in decades:
-        decade_factor = (decade - 1930) / (2020 - 1930)  # 0 in 1930, 1 in 2020
-        for cat, final_val in zip(categories, final_values):
-            # Simulate growth over time
-            if cat == "Online":
-                # Online starts appearing only after 1990
-                if decade < 1990:
-                    value = 0
-                else:
-                    online_years = decade - 1990
-                    max_online_years = 2020 - 1990
-                    value = final_val * (online_years / max_online_years) ** 2
-            else:
-                # Other categories decline as online grows
-                decline_factor = 1 - (0.7 * (decade - 1990)/(2020-1990)) if decade > 1990 and cat != "Online" else 1
-                value = final_val * decade_factor * decline_factor if decline_factor > 0 else 0
-            
+    for kw in keywords:
+        base = np.random.randint(50, 150)
+        for date in date_range:
             data.append({
-                "Decade": decade,
-                "Category": cat,
-                "Percentage": max(0, min(100, round(value, 2)))  # Clamp between 0-100
-            )
-    
+                "keyword": kw,
+                "date": date.strftime("%Y-%m-%d"),
+                "search_volume": base * (0.8 + 0.4 * np.random.random())
+            })
     return pd.DataFrame(data)
 
-df = generate_data()
+# Date parser with multiple format support
+def parse_dates(df, date_column):
+    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d', '%d-%m-%Y', '%m-%d-%Y'):
+        try:
+            df['date'] = pd.to_datetime(df[date_column], format=fmt)
+            return df
+        except:
+            continue
+    df['date'] = pd.to_datetime(df[date_column], errors='coerce')
+    return df
+
+# Load data
+if uploaded_file:
+    try:
+        df = pd.read_csv(uploaded_file)
+        
+        # Auto-detect date column
+        date_col = next((col for col in df.columns if 'date' in col.lower()), None)
+        if not date_col:
+            date_col = st.selectbox("Select date column", df.columns)
+        
+        df = parse_dates(df, date_col)
+        
+        # Auto-detect volume column
+        if 'search_volume' not in df.columns:
+            vol_col = next((col for col in df.columns if 'volume' in col.lower() or 'demand' in col.lower()), None)
+            if not vol_col:
+                vol_col = st.selectbox("Select search volume column", 
+                                     [c for c in df.columns if c != date_col])
+            df = df.rename(columns={vol_col: 'search_volume'})
+        
+        st.success("Data loaded successfully!")
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+        st.info("Using sample data instead")
+        df = generate_sample_data()
+else:
+    st.info("Using sample data - upload your CSV to visualize your own")
+    df = generate_sample_data()
+
+# Data processing
+df = df.dropna(subset=['date', 'search_volume'])
+df['normalized_volume'] = df.groupby('keyword')['search_volume'].transform(
+    lambda x: (x - x.min()) / (x.max() - x.min()) * 100
+)
 
 # Animation controls
 st.sidebar.header("Settings")
+selected_keywords = st.sidebar.multiselect(
+    "Select keywords:",
+    df['keyword'].unique(),
+    default=df['keyword'].unique()[:3]
+)
+
 animation_speed = st.sidebar.slider(
     "Animation speed:",
-    min_value=100,
-    max_value=1500,
-    value=500,
+    100, 1500, 500,
     help="Milliseconds between frames"
 )
 
-highlight_color = st.sidebar.color_picker(
-    "Highlight color:",
-    "#000000"
-)
-
 # Create animated chart
+plot_df = df[df['keyword'].isin(selected_keywords)] if selected_keywords else df
+
 fig = px.bar(
-    df,
-    x="Category",
-    y="Percentage",
-    color="Category",
-    animation_frame="Decade",
-    range_y=[0, 30],
-    title="<b>How Couples Met by Decade</b>",
-    labels={"Percentage": "Percentage of Couples (%)"},
-    color_discrete_sequence=px.colors.qualitative.Pastel,
-    category_orders={"Category": df['Category'].unique().tolist()}
+    plot_df,
+    x="keyword",
+    y="normalized_volume",
+    color="keyword",
+    animation_frame="date",
+    range_y=[0, 100],
+    title="<b>Search Demand Over Time</b>",
+    labels={
+        "normalized_volume": "Normalized Demand (0-100)",
+        "date": "Date"
+    },
+    color_discrete_sequence=px.colors.qualitative.Pastel
 )
 
-# Customize animation and layout
+# Customize layout
 fig.update_layout(
     hovermode="x unified",
-    showlegend=True,
-    title_x=0.5,
+    showlegend=False,
+    title_x=0.3,
     font=dict(size=12),
     margin=dict(t=100),
     xaxis_title=None,
-    yaxis_title="Percentage of Couples",
     transition={'duration': animation_speed//2}
 )
 
 fig.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = animation_speed
 
-# Add decade labels
-fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
-
-# Add source citation
-st.caption("""
-Source: Diana Bussotti, Rosenfeld, Michael J. Dunbar, Thomas, and Kevin Houser. 2012
-New Couples Meet and Stop Together. 2012-2020 2022 combined sponsor.
-""")
-
-# Display the animation
+# Display
 st.plotly_chart(fig, use_container_width=True)
 
-# Show data table
-with st.expander("📊 View Data Table"):
-    pivot_df = df.pivot(index="Category", columns="Decade", values="Percentage")
-    st.dataframe(pivot_df.style.format("{:.2f}%"))
+# Data table
+with st.expander("📋 View Data"):
+    st.dataframe(plot_df.sort_values(["keyword", "date"]))
 
-# Add download button
-st.sidebar.download_button(
-    label="Download Data",
-    data=df.to_csv(index=False).encode(),
-    file_name="how_couples_met.csv",
-    mime="text/csv"
-)
+# Footer
+st.caption("Tip: For best results, include columns for 'keyword', 'date', and search volume")
