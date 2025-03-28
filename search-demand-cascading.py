@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 from io import StringIO
 
@@ -116,7 +117,7 @@ if not plot_df.empty:
     )
     
     # Customize animation
-    fig.update_layout()
+    fig.update_layout(
         hovermode="x unified",
         showlegend=False,
         title_x=0.3,
