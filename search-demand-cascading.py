@@ -1,138 +1,162 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-
-# Check for required packages
-try:
-    import plotly.express as px
-    import plotly.graph_objects as go
-except ImportError:
-    st.error("Critical packages missing! Please install with:\n\n"
-             "`pip install plotly streamlit pandas numpy`")
-    st.stop()
+import plotly.express as px
+from io import StringIO
 
 # Configure page
 st.set_page_config(
-    page_title="Animated Trend Analyzer",
-    page_icon="📊",
+    page_title="Keyword Demand Animator",
+    page_icon="📈",
     layout="wide"
 )
 
 # Title and description
-st.title("🚀 Animated Search Demand Visualizer")
-st.markdown("""
-Explore how search demand trends cascade across different time frames with this interactive animation.
-""")
+st.title("🔍 Animated Keyword Search Demand")
+st.markdown("Upload your keyword data to visualize weekly demand trends with animations")
 
-# Generate realistic mock data
-@st.cache_data
-def generate_mock_data():
-    np.random.seed(42)
-    date_range = pd.date_range(start="2023-01-01", end="2023-03-31", freq="D")
-    
-    # Base trend with seasonality
-    x = np.linspace(0, 4*np.pi, len(date_range))
-    base_trend = (np.sin(x) * 30 + 50) * (1 + 0.2 * np.sin(x/4))
-    
-    data = {
-        "date": date_range,
-        "hourly": base_trend * (0.8 + 0.4*np.random.random(len(date_range))),
-        "daily": base_trend * (0.9 + 0.2*np.random.random(len(date_range))),
-        "weekly": base_trend,
-        "monthly": np.convolve(base_trend, np.ones(30)/30, mode='same')
-    }
-    
-    df = pd.DataFrame(data)
-    
-    # Normalize to 0-100 scale
-    for col in data.keys():
-        if col != "date":
-            df[col] = (df[col] - df[col].min()) / (df[col].max() - df[col].min()) * 100
-            
-    return df
-
-# Load data
-df = generate_mock_data()
-
-# Sidebar controls
-with st.sidebar:
-    st.header("Controls")
-    time_frames = st.multiselect(
-        "Select time frames:",
-        ["hourly", "daily", "weekly", "monthly"],
-        default=["daily", "weekly", "monthly"]
-    )
-    
-    animation_speed = st.slider(
-        "Animation speed:",
-        min_value=50,
-        max_value=500,
-        value=200,
-        help="Milliseconds between frames"
-    )
-    
-    show_raw = st.checkbox("Show raw data", False)
-
-# Prepare data for animation
-df_melted = df.melt(
-    id_vars=["date"], 
-    value_vars=time_frames,
-    var_name="time_frame", 
-    value_name="demand"
+# File upload section
+st.sidebar.header("Data Upload")
+uploaded_file = st.sidebar.file_uploader(
+    "Upload your CSV file",
+    type=["csv"],
+    help="Format: Columns should include 'keyword', 'week_start_date', and 'search_volume'"
 )
 
-# Create animated bar chart
-if time_frames:
+# Sample data generator
+@st.cache_data
+def generate_sample_data():
+    keywords = ["AI Tools", "ChatGPT", "Bard AI", "LLM"]
+    date_range = pd.date_range(start="2023-01-01", periods=12, freq="W")
+    
+    data = []
+    for kw in keywords:
+        base = np.random.randint(50, 150)
+        for date in date_range:
+            data.append({
+                "keyword": kw,
+                "week_start_date": date.strftime("%Y-%m-%d"),
+                "search_volume": base * (0.8 + 0.4 * np.random.random())
+            })
+    
+    return pd.DataFrame(data)
+
+# Main app logic
+if uploaded_file:
+    try:
+        # Try reading user's file
+        df = pd.read_csv(uploaded_file)
+        st.success("✅ File successfully uploaded!")
+    except Exception as e:
+        st.error(f"Error reading file: {str(e)}")
+        st.info("Using sample data instead")
+        df = generate_sample_data()
+else:
+    st.info("Using sample data. Upload a CSV to visualize your own.")
+    df = generate_sample_data()
+
+# Data validation and processing
+try:
+    # Convert date column if needed
+    if 'week_start_date' in df.columns:
+        df['week_start_date'] = pd.to_datetime(df['week_start_date'])
+    elif 'date' in df.columns:
+        df.rename(columns={'date': 'week_start_date'}, inplace=True)
+        df['week_start_date'] = pd.to_datetime(df['week_start_date'])
+    
+    # Normalize search volume if needed
+    if 'search_volume' not in df.columns:
+        volume_col = st.selectbox("Select search volume column", 
+                                [c for c in df.columns if c not in ['keyword', 'week_start_date']])
+        df.rename(columns={volume_col: 'search_volume'}, inplace=True)
+    
+    # Normalize to 0-100 scale per keyword
+    df['normalized_volume'] = df.groupby('keyword')['search_volume'].transform(
+        lambda x: (x - x.min()) / (x.max() - x.min()) * 100
+    )
+except Exception as e:
+    st.error(f"Data processing error: {str(e)}")
+    st.stop()
+
+# Animation controls
+st.sidebar.header("Animation Settings")
+selected_keywords = st.sidebar.multiselect(
+    "Select keywords to show:",
+    df['keyword'].unique(),
+    default=df['keyword'].unique()[:3]
+)
+
+animation_speed = st.sidebar.slider(
+    "Animation speed:",
+    min_value=50,
+    max_value=1000,
+    value=200,
+    step=50,
+    help="Milliseconds between frames"
+)
+
+# Filter data
+plot_df = df[df['keyword'].isin(selected_keywords)] if selected_keywords else df
+
+# Create animated chart
+if not plot_df.empty:
     fig = px.bar(
-        df_melted,
-        x="time_frame",
-        y="demand",
-        color="time_frame",
-        animation_frame="date",
+        plot_df,
+        x="keyword",
+        y="normalized_volume",
+        color="keyword",
+        animation_frame="week_start_date",
         range_y=[0, 100],
-        title="<b>Daily Demand by Time Frame</b>",
-        labels={"demand": "Normalized Demand (0-100)", "time_frame": "Time Frame"},
+        title="<b>Weekly Search Demand Animation</b>",
+        labels={
+            "normalized_volume": "Normalized Demand (0-100)",
+            "week_start_date": "Week Starting"
+        },
         template="plotly_white",
-        color_discrete_sequence=px.colors.qualitative.Plotly
+        color_discrete_sequence=px.colors.qualitative.Pastel
     )
     
     # Customize animation
     fig.update_layout(
         hovermode="x unified",
         showlegend=False,
-        title_x=0.5,
-        font=dict(size=12)
-    )
+        title_x=0.3,
+        font=dict(size=12),
+        margin=dict(t=100)
     
     fig.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = animation_speed
-    fig.layout.updatemenus[0].buttons[0].args[1]["transition"]["duration"] = animation_speed//2
+    fig.layout.updatemenus[0].buttons[0].args[1]["transition"]["duration"] = animation_speed // 2
     
+    # Display the animation
     st.plotly_chart(fig, use_container_width=True)
     
-    # Add trend line chart
-    st.markdown("---")
+    # Add trend lines
     st.subheader("Trend Lines Over Time")
-    fig_lines = px.line(
-        df,
-        x="date",
-        y=time_frames,
-        template="plotly_white",
-        color_discrete_sequence=px.colors.qualitative.Plotly
+    trend_fig = px.line(
+        plot_df,
+        x="week_start_date",
+        y="normalized_volume",
+        color="keyword",
+        markers=True,
+        template="plotly_white"
     )
-    fig_lines.update_layout(hovermode="x unified")
-    st.plotly_chart(fig_lines, use_container_width=True)
+    st.plotly_chart(trend_fig, use_container_width=True)
 else:
-    st.warning("Please select at least one time frame from the sidebar")
+    st.warning("No data available for selected keywords")
 
-# Show raw data if requested
-if show_raw:
-    st.markdown("---")
-    st.subheader("Raw Data")
-    st.dataframe(df.sort_values("date", ascending=False), height=300)
+# Data explorer section
+with st.expander("📁 View Processed Data"):
+    st.dataframe(plot_df.sort_values(["keyword", "week_start_date"]))
+
+# Download sample template
+st.sidebar.download_button(
+    label="Download Sample CSV",
+    data=generate_sample_data().to_csv(index=False).encode(),
+    file_name="keyword_search_demand_sample.csv",
+    mime="text/csv"
+)
 
 # Footer
 st.markdown("---")
 st.caption("""
-Created with Streamlit | Data is simulated for demonstration purposes
+Tip: For best results, format your CSV with columns: 'keyword', 'week_start_date', and 'search_volume'
 """)
