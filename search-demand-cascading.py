@@ -116,7 +116,7 @@ if not plot_df.empty:
     )
     
     # Customize animation
-    fig.update_layout(
+    fig.update_layout()
         hovermode="x unified",
         showlegend=False,
         title_x=0.3,
