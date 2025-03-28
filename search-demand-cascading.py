@@ -44,7 +44,6 @@ def generate_sample_data():
 # Main app logic
 if uploaded_file:
     try:
-        # Try reading user's file
         df = pd.read_csv(uploaded_file)
         st.success("✅ File successfully uploaded!")
     except Exception as e:
@@ -57,20 +56,17 @@ else:
 
 # Data validation and processing
 try:
-    # Convert date column if needed
     if 'week_start_date' in df.columns:
         df['week_start_date'] = pd.to_datetime(df['week_start_date'])
     elif 'date' in df.columns:
         df.rename(columns={'date': 'week_start_date'}, inplace=True)
         df['week_start_date'] = pd.to_datetime(df['week_start_date'])
     
-    # Normalize search volume if needed
     if 'search_volume' not in df.columns:
         volume_col = st.selectbox("Select search volume column", 
                                 [c for c in df.columns if c not in ['keyword', 'week_start_date']])
         df.rename(columns={volume_col: 'search_volume'}, inplace=True)
     
-    # Normalize to 0-100 scale per keyword
     df['normalized_volume'] = df.groupby('keyword')['search_volume'].transform(
         lambda x: (x - x.min()) / (x.max() - x.min()) * 100
     )
@@ -116,8 +112,8 @@ if not plot_df.empty:
         color_discrete_sequence=px.colors.qualitative.Pastel
     )
     
-    # Customize animation
-    fig.update_layout()
+    # Fixed indentation here
+    fig.update_layout(
         hovermode="x unified",
         showlegend=False,
         title_x=0.3,
@@ -127,10 +123,8 @@ if not plot_df.empty:
     fig.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = animation_speed
     fig.layout.updatemenus[0].buttons[0].args[1]["transition"]["duration"] = animation_speed // 2
     
-    # Display the animation
     st.plotly_chart(fig, use_container_width=True)
     
-    # Add trend lines
     st.subheader("Trend Lines Over Time")
     trend_fig = px.line(
         plot_df,
@@ -158,6 +152,4 @@ st.sidebar.download_button(
 
 # Footer
 st.markdown("---")
-st.caption("""
-Tip: For best results, format your CSV with columns: 'keyword', 'week_start_date', and 'search_volume'
-""")
+st.caption("Tip: For best results, format your CSV with columns: 'keyword', 'week_start_date', and 'search_volume'")
