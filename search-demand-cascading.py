@@ -20,7 +20,7 @@ st.sidebar.header("Data Upload")
 uploaded_file = st.sidebar.file_uploader(
     "Upload your CSV file",
     type=["csv"],
-    help="Format: Columns should include 'keyword', 'week_start_date', and 'search_volume'"
+    help="Format should include: 'keyword', date column, and search volume column"
 )
 
 # Sample data generator
@@ -35,11 +35,20 @@ def generate_sample_data():
         for date in date_range:
             data.append({
                 "keyword": kw,
-                "week_start_date": date.strftime("%Y-%m-%d"),
+                "week_start_date": date.strftime("%d/%m/%Y"),  # Using day-first format
                 "search_volume": base * (0.8 + 0.4 * np.random.random())
             })
     
     return pd.DataFrame(data)
+
+# Date format detector
+def parse_dates(series):
+    for fmt in ('%d/%m/%Y', '%m/%d/%Y', '%Y-%m-%d', '%d-%m-%Y', '%m-%d-%Y', '%Y/%m/%d'):
+        try:
+            return pd.to_datetime(series, format=fmt)
+        except ValueError:
+            continue
+    return pd.to_datetime(series, dayfirst=True, errors='coerce')
 
 # Main app logic
 if uploaded_file:
@@ -56,20 +65,36 @@ else:
 
 # Data validation and processing
 try:
-    if 'week_start_date' in df.columns:
-        df['week_start_date'] = pd.to_datetime(df['week_start_date'])
-    elif 'date' in df.columns:
-        df.rename(columns={'date': 'week_start_date'}, inplace=True)
-        df['week_start_date'] = pd.to_datetime(df['week_start_date'])
+    # Handle date column
+    date_col = None
+    for col in df.columns:
+        if 'date' in col.lower() or 'week' in col.lower():
+            date_col = col
+            break
     
+    if date_col:
+        df['week_start_date'] = parse_dates(df[date_col])
+        df.drop(columns=[date_col], inplace=True, errors='ignore')
+    else:
+        st.error("No date column found. Please include a date column in your CSV.")
+        st.stop()
+    
+    # Handle search volume column
     if 'search_volume' not in df.columns:
-        volume_col = st.selectbox("Select search volume column", 
-                                [c for c in df.columns if c not in ['keyword', 'week_start_date']])
+        volume_col = st.selectbox(
+            "Select search volume column", 
+            [c for c in df.columns if c not in ['keyword', 'week_start_date']]
+        )
         df.rename(columns={volume_col: 'search_volume'}, inplace=True)
     
+    # Normalize data
     df['normalized_volume'] = df.groupby('keyword')['search_volume'].transform(
         lambda x: (x - x.min()) / (x.max() - x.min()) * 100
     )
+    
+    # Filter out any rows with invalid dates
+    df = df.dropna(subset=['week_start_date'])
+    
 except Exception as e:
     st.error(f"Data processing error: {str(e)}")
     st.stop()
@@ -112,7 +137,6 @@ if not plot_df.empty:
         color_discrete_sequence=px.colors.qualitative.Pastel
     )
     
-    # PROPERLY CLOSED PARENTHESES HERE:
     fig.update_layout(
         hovermode="x unified",
         showlegend=False,
@@ -153,4 +177,7 @@ st.sidebar.download_button(
 
 # Footer
 st.markdown("---")
-st.caption("Tip: For best results, format your CSV with columns: 'keyword', 'week_start_date', and 'search_volume'")
+st.caption("""
+Tip: For best results, include columns named 'keyword', a date column, and 'search_volume'.
+Date formats automatically detected (DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD, etc.)
+""")
