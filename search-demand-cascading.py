@@ -6,7 +6,7 @@ from io import StringIO
 
 # Configure page
 st.set_page_config(
-    page_title="MV Search Demand Who is winning the race",
+    page_title="MV Search Demand - Who is winning the race",
     page_icon="📊",
     layout="wide"
 )
