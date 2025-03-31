@@ -6,13 +6,13 @@ from io import StringIO
 
 # Configure page
 st.set_page_config(
-    page_title="Keyword Demand Visualizer",
+    page_title="MV Search Demand Who is winning the race",
     page_icon="📊",
     layout="wide"
 )
 
 # Title and description
-st.title("📊 Search Demand Over Time")
+st.title("📊 MV Search Demand Who is winning the race")
 st.markdown("Upload your keyword data to see animated demand trends")
 
 # File upload section
