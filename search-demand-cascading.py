@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 # Title and description
-st.title("📊 MV Search Demand Who is winning the race")
+st.title("📊 MV Search Demand - Who is winning the race")
 st.markdown("Upload your keyword data to see animated demand trends")
 
 # File upload section
